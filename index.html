@@ -77,39 +77,61 @@
         // Parse CSV/paste data and group by GAME
         const parseImportData = (text) => {
             const lines = text.trim().split('\n');
-            if (lines.length < 2) return [];
+            if (lines.length < 1) return [];
             
             const groupedData = {};
             
-            for (let i = 1; i < lines.length; i++) {
+            // Parse each line (no header row expected)
+            // Column structure: DAY | BROADCAST | CH | START | END | BOOTH | FP | CREW | LANG | FEE | S | A | GAME | INFO
+            for (let i = 0; i < lines.length; i++) {
                 const parts = lines[i].split('\t');
-                if (parts.length < 11) continue;
+                if (parts.length < 13) continue; // Need at least 13 columns to reach GAME
                 
-                const [day, broadcast, ch, start, end, booth, fp, crew, lang, fee, game, info] = parts;
+                const day = parts[0];
+                const broadcast = parts[1];
+                const ch = parts[2];
+                const start = parts[3];
+                const end = parts[4];
+                const booth = parts[5];
+                const fp = parts[6];
+                const crew = parts[7];
+                const lang = parts[8];
+                const fee = parts[9];
+                // parts[10] = S column (skip)
+                // parts[11] = A column (skip)
+                const game = parts[12];
+                const info = parts[13] || '';
                 
-                if (!start || !game) continue;
+                // Clean up game name (remove extra whitespace)
+                const cleanGame = game ? game.trim().replace(/\s+/g, ' ') : '';
                 
-                if (!groupedData[game]) {
-                    groupedData[game] = {
+                if (!start || !cleanGame) continue;
+                
+                if (!groupedData[cleanGame]) {
+                    groupedData[cleanGame] = {
                         id: Date.now() + Math.random(),
                         date: day,
-                        channel: `${broadcast}${ch ? ' ' + ch : ''}`,
+                        channel: `${broadcast} ${ch}`.trim(),
                         startTime: start,
                         endTime: end,
-                        gameName: game,
-                        info: info || '',
-                        template: detectTemplate(game),
+                        gameName: cleanGame,
+                        info: info,
+                        template: detectTemplate(cleanGame),
                         crews: [],
                         remarks: ''
                     };
                 }
                 
-                groupedData[game].crews.push({
-                    booth: booth,
-                    fp: fp,
-                    crew: crew,
-                    lang: lang
-                });
+                // Only add crew if we have valid crew data
+                if (crew && crew.trim()) {
+                    groupedData[cleanGame].crews.push({
+                        booth: booth,
+                        fp: fp,
+                        crew: crew,
+                        lang: lang
+                    });
+                }
+            }
             }
             
             return Object.values(groupedData).map(event => {
