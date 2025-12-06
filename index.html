@@ -132,6 +132,31 @@
                     });
                 }
             }
+            
+            return Object.values(groupedData).map(event => {
+                const nlCrew = event.crews.find(c => c.lang && c.lang.includes('NL'));
+                const frCrew = event.crews.find(c => c.lang && c.lang.includes('FR'));
+                
+                return {
+                    ...event,
+                    boothNL: nlCrew?.booth || '',
+                    crewNL: nlCrew?.crew || '',
+                    fpNL: nlCrew?.fp || '',
+                    boothFR: frCrew?.booth || '',
+                    crewFR: frCrew?.crew || '',
+                    fpFR: frCrew?.fp || '',
+                    isActive: event.crews.length > 1,
+                    checks: {
+                        boothCheck: false,
+                        nlIn: false,
+                        nlSync: false,
+                        frIn: false,
+                        frSync: false,
+                        goingLive: false
+                    }
+                };
+            });
+        };
             }
             
             return Object.values(groupedData).map(event => {
