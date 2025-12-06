@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LiveList - Database Manager</title>
+    <title>LiveList - Broadcast Manager</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -14,17 +14,16 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
+
+        // Icons
         const Plus = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
         const Edit2 = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
         const Trash2 = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
-        const Search = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
-        const Download = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
-        const X = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-        const Check = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>;
+        const Calendar = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+        const Clock = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 
-        // Simple storage polyfill for local development
+        // Storage polyfill
         if (typeof window.storage === 'undefined') {
-            const localDB = {};
             window.storage = {
                 async get(key) {
                     const value = localStorage.getItem(key);
@@ -45,28 +44,126 @@
             };
         }
 
-        function DatabaseManager() {
-            const [records, setRecords] = useState([]);
-            const [searchTerm, setSearchTerm] = useState('');
-            const [isAdding, setIsAdding] = useState(false);
-            const [editingId, setEditingId] = useState(null);
-            const [formData, setFormData] = useState({
-                name: '',
-                email: '',
-                phone: '',
-                company: '',
-                notes: ''
+        // Utility functions
+        const parseTime = (timeStr) => {
+            if (!timeStr || !timeStr.includes(':')) return 0;
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return hours * 60 + minutes;
+        };
+
+        const formatTime = (minutes) => {
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        };
+
+        const parseOffset = (offsetStr) => {
+            const match = offsetStr.match(/([+-]?)(\d+):(\d+)/);
+            if (!match) return 0;
+            const sign = match[1] === '-' ? -1 : 1;
+            const hours = parseInt(match[2]);
+            const minutes = parseInt(match[3]);
+            return sign * (hours * 60 + minutes);
+        };
+
+        const formatOffset = (minutes) => {
+            const sign = minutes < 0 ? '-' : '+';
+            const abs = Math.abs(minutes);
+            const h = Math.floor(abs / 60);
+            const m = abs % 60;
+            return `${sign}${h}:${String(m).padStart(2, '0')}`;
+        };
+
+        // Parse CSV/paste data and group by GAME
+        const parseImportData = (text) => {
+            const lines = text.trim().split('\n');
+            if (lines.length < 2) return [];
+            
+            const groupedData = {};
+            
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split('\t');
+                if (parts.length < 11) continue;
+                
+                const [day, broadcast, ch, start, end, booth, fp, crew, lang, fee, game, info] = parts;
+                
+                if (!start || !game) continue;
+                
+                if (!groupedData[game]) {
+                    groupedData[game] = {
+                        id: Date.now() + Math.random(),
+                        date: day,
+                        channel: `${broadcast}${ch ? ' ' + ch : ''}`,
+                        startTime: start,
+                        endTime: end,
+                        gameName: game,
+                        info: info || '',
+                        template: detectTemplate(game),
+                        crews: [],
+                        remarks: ''
+                    };
+                }
+                
+                groupedData[game].crews.push({
+                    booth: booth,
+                    fp: fp,
+                    crew: crew,
+                    lang: lang
+                });
+            }
+            
+            return Object.values(groupedData).map(event => {
+                const nlCrew = event.crews.find(c => c.lang.includes('NL'));
+                const frCrew = event.crews.find(c => c.lang.includes('FR'));
+                
+                return {
+                    ...event,
+                    boothNL: nlCrew?.booth || '',
+                    crewNL: nlCrew?.crew || '',
+                    fpNL: nlCrew?.fp || '',
+                    boothFR: frCrew?.booth || '',
+                    crewFR: frCrew?.crew || '',
+                    fpFR: frCrew?.fp || '',
+                    isActive: event.crews.length > 1,
+                    checks: {
+                        boothCheck: false,
+                        nlIn: false,
+                        nlSync: false,
+                        frIn: false,
+                        frSync: false,
+                        goingLive: false
+                    }
+                };
             });
+        };
+
+        const detectTemplate = (gameName) => {
+            const lower = gameName.toLowerCase().replace(/\s+/g, '');
+            if (lower.includes('ligue') || lower.includes('pokal') || lower.includes('bundesliga') || lower.includes('seriea') || lower.includes('laliga')) {
+                return 'football';
+            }
+            return 'football';
+        };
+
+        function App() {
+            const [view, setView] = useState('dashboard');
+            const [currentTime, setCurrentTime] = useState(new Date());
+            const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+            const [templates, setTemplates] = useState([]);
+            const [events, setEvents] = useState([]);
 
             useEffect(() => {
-                loadData();
+                loadTemplates();
+                loadEvents();
+                const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+                return () => clearInterval(timer);
             }, []);
 
-            const loadData = async () => {
+            const loadTemplates = async () => {
                 try {
-                    const result = await window.storage.list('record:');
-                    if (result && result.keys) {
-                        const loadedRecords = await Promise.all(
+                    const result = await window.storage.list('template:');
+                    if (result && result.keys && result.keys.length > 0) {
+                        const loaded = await Promise.all(
                             result.keys.map(async (key) => {
                                 try {
                                     const item = await window.storage.get(key);
@@ -76,235 +173,688 @@
                                 }
                             })
                         );
-                        setRecords(loadedRecords.filter(r => r !== null));
+                        setTemplates(loaded.filter(t => t !== null));
+                    } else {
+                        const defaultTemplate = {
+                            id: 'football',
+                            name: 'Football Match',
+                            boothCheckOffset: -90,
+                            crewInOffset: -75,
+                            syncTestOffset: -60,
+                            goingLiveOffset: -10,
+                            halfTimeOffset: 50
+                        };
+                        await window.storage.set('template:football', JSON.stringify(defaultTemplate));
+                        setTemplates([defaultTemplate]);
                     }
                 } catch (error) {
-                    console.log('No existing data found, starting fresh');
+                    console.log('Error loading templates');
                 }
             };
 
-            const saveRecord = async () => {
-                if (!formData.name.trim()) {
-                    alert('Name is required');
-                    return;
-                }
-
-                const record = {
-                    ...formData,
-                    id: editingId || Date.now().toString(),
-                    timestamp: new Date().toISOString()
-                };
-
+            const loadEvents = async () => {
                 try {
-                    await window.storage.set(`record:${record.id}`, JSON.stringify(record));
-                    await loadData();
-                    resetForm();
+                    const result = await window.storage.list('event:');
+                    if (result && result.keys) {
+                        const loaded = await Promise.all(
+                            result.keys.map(async (key) => {
+                                try {
+                                    const item = await window.storage.get(key);
+                                    return item ? JSON.parse(item.value) : null;
+                                } catch {
+                                    return null;
+                                }
+                            })
+                        );
+                        setEvents(loaded.filter(e => e !== null));
+                    }
                 } catch (error) {
-                    alert('Failed to save record');
+                    console.log('No events found');
                 }
             };
 
-            const deleteRecord = async (id) => {
-                if (!confirm('Are you sure you want to delete this record?')) return;
-                
-                try {
-                    await window.storage.delete(`record:${id}`);
-                    await loadData();
-                } catch (error) {
-                    alert('Failed to delete record');
+            const saveTemplate = async (template) => {
+                await window.storage.set(`template:${template.id}`, JSON.stringify(template));
+                await loadTemplates();
+            };
+
+            const deleteTemplate = async (id) => {
+                await window.storage.delete(`template:${id}`);
+                await loadTemplates();
+            };
+
+            const saveEvent = async (event) => {
+                await window.storage.set(`event:${event.id}`, JSON.stringify(event));
+                await loadEvents();
+            };
+
+            const deleteEvent = async (id) => {
+                await window.storage.delete(`event:${id}`);
+                await loadEvents();
+            };
+
+            const importEvents = async (importedEvents) => {
+                for (const event of importedEvents) {
+                    await saveEvent(event);
                 }
             };
-
-            const startEdit = (record) => {
-                setFormData(record);
-                setEditingId(record.id);
-                setIsAdding(true);
-            };
-
-            const resetForm = () => {
-                setFormData({ name: '', email: '', phone: '', company: '', notes: '' });
-                setIsAdding(false);
-                setEditingId(null);
-            };
-
-            const exportData = () => {
-                const csv = [
-                    ['Name', 'Email', 'Phone', 'Company', 'Notes', 'Date Added'],
-                    ...records.map(r => [
-                        r.name,
-                        r.email,
-                        r.phone,
-                        r.company,
-                        r.notes,
-                        new Date(r.timestamp).toLocaleDateString()
-                    ])
-                ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'database_export.csv';
-                a.click();
-            };
-
-            const filteredRecords = records.filter(record =>
-                Object.values(record).some(val =>
-                    String(val).toLowerCase().includes(searchTerm.toLowerCase())
-                )
-            );
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-                    <div className="max-w-6xl mx-auto">
-                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                            <h1 className="text-3xl font-bold text-gray-800 mb-4">My Learning App</h1>
-                            
-                            <div className="flex gap-3 flex-wrap">
-                                <div className="flex-1 min-w-[200px] relative">
-                                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                                        <Search />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        placeholder="Search records..."
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
-                                </div>
+                <div className="min-h-screen bg-gray-100">
+                    <header className="bg-blue-600 text-white p-4 shadow-lg">
+                        <div className="max-w-full mx-auto flex justify-between items-center px-4">
+                            <h1 className="text-2xl font-bold">LiveList Broadcast Manager</h1>
+                            <div className="flex items-center gap-2 text-xl font-mono bg-blue-700 px-6 py-3 rounded-lg">
+                                <Clock />
+                                {currentTime.toLocaleTimeString()}
+                            </div>
+                        </div>
+                    </header>
+
+                    <nav className="bg-white shadow-md">
+                        <div className="max-w-full mx-auto px-4">
+                            <div className="flex gap-4 py-3">
                                 <button
-                                    onClick={() => setIsAdding(true)}
-                                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors"
+                                    onClick={() => setView('dashboard')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                        view === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
                                 >
-                                    <Plus /> Add Record
+                                    Dashboard
                                 </button>
                                 <button
-                                    onClick={exportData}
-                                    disabled={records.length === 0}
-                                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2 transition-colors disabled:bg-gray-400"
+                                    onClick={() => setView('templates')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                        view === 'templates' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
                                 >
-                                    <Download /> Export CSV
+                                    Templates
+                                </button>
+                                <button
+                                    onClick={() => setView('import')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                        view === 'import' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    Import Events
                                 </button>
                             </div>
                         </div>
+                    </nav>
 
-                        {isAdding && (
-                            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-xl font-bold text-gray-800">
-                                        {editingId ? 'Edit Record' : 'Add New Record'}
-                                    </h2>
-                                    <button onClick={resetForm} className="text-gray-500 hover:text-gray-700">
-                                        <X />
+                    <main className="max-w-full p-6">
+                        {view === 'dashboard' && (
+                            <Dashboard 
+                                events={events}
+                                templates={templates}
+                                currentTime={currentTime}
+                                selectedDate={selectedDate}
+                                setSelectedDate={setSelectedDate}
+                                saveEvent={saveEvent}
+                                deleteEvent={deleteEvent}
+                            />
+                        )}
+                        {view === 'templates' && (
+                            <TemplateManager
+                                templates={templates}
+                                saveTemplate={saveTemplate}
+                                deleteTemplate={deleteTemplate}
+                            />
+                        )}
+                        {view === 'import' && (
+                            <ImportEvents
+                                templates={templates}
+                                importEvents={importEvents}
+                            />
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        function Dashboard({ events, templates, currentTime, selectedDate, setSelectedDate, saveEvent, deleteEvent }) {
+            const [editingRemarks, setEditingRemarks] = useState(null);
+            const [remarksValue, setRemarksValue] = useState('');
+
+            const getFilteredEvents = () => {
+                return events.filter(event => {
+                    const eventDate = event.date;
+                    const selectedDay = selectedDate.split('-')[2];
+                    return eventDate.includes(selectedDay);
+                }).sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
+            };
+
+            const toggleCheck = async (event, checkType) => {
+                const updated = { ...event };
+                updated.checks[checkType] = !updated.checks[checkType];
+                await saveEvent(updated);
+            };
+
+            const getTemplate = (event) => {
+                return templates.find(t => t.id === event.template) || templates[0];
+            };
+
+            const shouldHighlight = (event, checkType) => {
+                if (!event.isActive) return false;
+                if (event.checks[checkType]) return false;
+                
+                const template = getTemplate(event);
+                if (!template) return false;
+                
+                const startMinutes = parseTime(event.startTime);
+                const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+                
+                let triggerTime;
+                switch(checkType) {
+                    case 'boothCheck': triggerTime = startMinutes + template.boothCheckOffset; break;
+                    case 'nlIn':
+                    case 'frIn': triggerTime = startMinutes + template.crewInOffset; break;
+                    case 'nlSync':
+                    case 'frSync': triggerTime = startMinutes + template.syncTestOffset; break;
+                    case 'goingLive': triggerTime = startMinutes + template.goingLiveOffset; break;
+                    default: return false;
+                }
+                
+                return currentMinutes >= triggerTime;
+            };
+
+            const getCheckboxClass = (event, checkType) => {
+                if (!event.isActive) return 'cursor-not-allowed opacity-30';
+                if (event.checks[checkType]) return 'bg-green-400';
+                if (shouldHighlight(event, checkType)) return 'bg-yellow-300';
+                return 'bg-white';
+            };
+
+            const getEventStatusColor = (event) => {
+                if (!event.isActive) return '';
+                
+                const startMinutes = parseTime(event.startTime);
+                const endMinutes = parseTime(event.endTime);
+                const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+                const template = getTemplate(event);
+                
+                if (currentMinutes < startMinutes + (template?.boothCheckOffset || -90)) {
+                    return 'bg-orange-200';
+                }
+                if (currentMinutes < startMinutes) {
+                    return 'bg-orange-300';
+                }
+                if (currentMinutes >= startMinutes && currentMinutes < startMinutes + 5) {
+                    return 'bg-green-500 text-white font-bold';
+                }
+                if (currentMinutes < startMinutes + 30) {
+                    return 'bg-green-200';
+                }
+                const halfTime = startMinutes + (template?.halfTimeOffset || 50);
+                if (currentMinutes >= halfTime && currentMinutes < halfTime + 30) {
+                    return 'bg-green-600 text-white font-bold';
+                }
+                if (currentMinutes < endMinutes) {
+                    return 'bg-green-700 text-white font-bold';
+                }
+                return 'bg-gray-400 text-gray-300';
+            };
+
+            const startEditRemarks = (event) => {
+                setEditingRemarks(event.id);
+                setRemarksValue(event.remarks || '');
+            };
+
+            const saveRemarks = async (event) => {
+                const updated = { ...event, remarks: remarksValue };
+                await saveEvent(updated);
+                setEditingRemarks(null);
+            };
+
+            const filteredEvents = getFilteredEvents();
+
+            return (
+                <div>
+                    <div className="mb-6 flex items-center gap-4 bg-white p-4 rounded-lg shadow">
+                        <Calendar />
+                        <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg"
+                        />
+                        <span className="text-gray-600">
+                            Showing {filteredEvents.length} event(s)
+                        </span>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow-lg overflow-x-auto">
+                        <table className="w-full text-sm border-collapse">
+                            <thead className="bg-gray-100 sticky top-0">
+                                <tr>
+                                    <th className="border border-gray-300 px-2 py-2 text-left">CHANNEL</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center">BOOTH</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">BTH NL</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">IN</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-left text-blue-600">CREW NL</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">SYNC</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">FP NL</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">BTH FR</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">IN</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-left text-red-600">CREW FR</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">SYNC</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">FP FR</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center">GOING LIVE</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center">START</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-left min-w-[300px]">GAME</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center">END</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-left">INFO</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-left min-w-[150px]">REMARKS</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center">DELETE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredEvents.map(event => {
+                                    const statusColor = getEventStatusColor(event);
+                                    const isInactive = !event.isActive;
+                                    
+                                    return (
+                                        <tr key={event.id} className={isInactive ? 'bg-white text-gray-300' : ''}>
+                                            <td className="border border-gray-300 px-2 py-2">{event.channel}</td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                                {isInactive ? '--' : (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={event.checks.boothCheck}
+                                                        onChange={() => toggleCheck(event, 'boothCheck')}
+                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'boothCheck')}`}
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">
+                                                {isInactive ? '--' : event.boothNL}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                                {isInactive ? '--' : (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={event.checks.nlIn}
+                                                        onChange={() => toggleCheck(event, 'nlIn')}
+                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'nlIn')}`}
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-blue-600">
+                                                {isInactive ? '--' : event.crewNL}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                                {isInactive ? '--' : (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={event.checks.nlSync}
+                                                        onChange={() => toggleCheck(event, 'nlSync')}
+                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'nlSync')}`}
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">
+                                                {isInactive ? '--' : event.fpNL}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">
+                                                {isInactive ? '--' : event.boothFR}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                                {isInactive ? '--' : (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={event.checks.frIn}
+                                                        onChange={() => toggleCheck(event, 'frIn')}
+                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'frIn')}`}
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-red-600">
+                                                {isInactive ? '--' : event.crewFR}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                                {isInactive ? '--' : (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={event.checks.frSync}
+                                                        onChange={() => toggleCheck(event, 'frSync')}
+                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'frSync')}`}
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">
+                                                {isInactive ? '--' : event.fpFR}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                                {isInactive ? '--' : (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={event.checks.goingLive}
+                                                        onChange={() => toggleCheck(event, 'goingLive')}
+                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'goingLive')}`}
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>
+                                                {event.startTime}
+                                            </td>
+                                            <td className={`border border-gray-300 px-2 py-2 ${statusColor}`}>
+                                                {event.gameName}
+                                            </td>
+                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>
+                                                {event.endTime}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-xs">
+                                                {event.info}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2">
+                                                {editingRemarks === event.id ? (
+                                                    <input
+                                                        type="text"
+                                                        value={remarksValue}
+                                                        onChange={(e) => setRemarksValue(e.target.value)}
+                                                        onBlur={() => saveRemarks(event)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && saveRemarks(event)}
+                                                        autoFocus
+                                                        className="w-full px-2 py-1 border border-blue-500 rounded"
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        onClick={() => !isInactive && startEditRemarks(event)}
+                                                        className={`cursor-pointer hover:bg-gray-50 px-2 py-1 rounded min-h-[24px]`}
+                                                    >
+                                                        {event.remarks || (isInactive ? '--' : 'Click to edit...')}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                                <button
+                                                    onClick={() => {
+                                                        if (confirm('Delete this event?')) {
+                                                            deleteEvent(event.id);
+                                                        }
+                                                    }}
+                                                    className="text-red-600 hover:text-red-800"
+                                                >
+                                                    <Trash2 />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {filteredEvents.length === 0 && (
+                        <div className="text-center py-12 bg-white rounded-lg shadow-lg mt-6">
+                            <p className="text-lg text-gray-500">No events scheduled for this date</p>
+                            <p className="text-sm text-gray-400 mt-2">Import events to get started</p>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function TemplateManager({ templates, saveTemplate, deleteTemplate }) {
+            const [editing, setEditing] = useState(null);
+            const [formData, setFormData] = useState({
+                id: '',
+                name: '',
+                boothCheckOffset: -90,
+                crewInOffset: -75,
+                syncTestOffset: -60,
+                goingLiveOffset: -10,
+                halfTimeOffset: 50
+            });
+
+            const startEdit = (template) => {
+                setFormData(template ? { ...template } : {
+                    id: Date.now().toString(),
+                    name: '',
+                    boothCheckOffset: -90,
+                    crewInOffset: -75,
+                    syncTestOffset: -60,
+                    goingLiveOffset: -10,
+                    halfTimeOffset: 50
+                });
+                setEditing(true);
+            };
+
+            const handleSave = async () => {
+                if (!formData.name) {
+                    alert('Template name is required');
+                    return;
+                }
+                await saveTemplate(formData);
+                setEditing(false);
+            };
+
+            return (
+                <div>
+                    <div className="mb-6">
+                        <button
+                            onClick={() => startEdit(null)}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                        >
+                            <Plus /> Create Template
+                        </button>
+                    </div>
+
+                    {editing && (
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <h2 className="text-xl font-bold mb-4">
+                                {formData.id && templates.find(t => t.id === formData.id) ? 'Edit Template' : 'Create Template'}
+                            </h2>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Template Name</label>
+                                    <input
+                                        type="text"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                        placeholder="e.g., Football Match"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Booth Check (minutes before KO)</label>
+                                        <input
+                                            type="number"
+                                            value={Math.abs(formData.boothCheckOffset)}
+                                            onChange={(e) => setFormData({ ...formData, boothCheckOffset: -Math.abs(parseInt(e.target.value) || 0) })}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Crew In (minutes before KO)</label>
+                                        <input
+                                            type="number"
+                                            value={Math.abs(formData.crewInOffset)}
+                                            onChange={(e) => setFormData({ ...formData, crewInOffset: -Math.abs(parseInt(e.target.value) || 0) })}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Sync Test (minutes before KO)</label>
+                                        <input
+                                            type="number"
+                                            value={Math.abs(formData.syncTestOffset)}
+                                            onChange={(e) => setFormData({ ...formData, syncTestOffset: -Math.abs(parseInt(e.target.value) || 0) })}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Going Live (minutes before KO)</label>
+                                        <input
+                                            type="number"
+                                            value={Math.abs(formData.goingLiveOffset)}
+                                            onChange={(e) => setFormData({ ...formData, goingLiveOffset: -Math.abs(parseInt(e.target.value) || 0) })}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Half-time (minutes after KO)</label>
+                                        <input
+                                            type="number"
+                                            value={formData.halfTimeOffset}
+                                            onChange={(e) => setFormData({ ...formData, halfTimeOffset: parseInt(e.target.value) || 50 })}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 pt-4">
+                                    <button
+                                        onClick={handleSave}
+                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+                                    >
+                                        Save Template
+                                    </button>
+                                    <button
+                                        onClick={() => setEditing(false)}
+                                        className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400"
+                                    >
+                                        Cancel
                                     </button>
                                 </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <input
-                                        type="text"
-                                        placeholder="Name *"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
-                                    <input
-                                        type="email"
-                                        placeholder="Email"
-                                        value={formData.email}
-                                        onChange={(e) => setFormData({...formData, email: e.target.value})}
-                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
-                                    <input
-                                        type="tel"
-                                        placeholder="Phone"
-                                        value={formData.phone}
-                                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder="Company"
-                                        value={formData.company}
-                                        onChange={(e) => setFormData({...formData, company: e.target.value})}
-                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
-                                    <textarea
-                                        placeholder="Notes"
-                                        value={formData.notes}
-                                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent md:col-span-2"
-                                        rows="3"
-                                    />
-                                </div>
-                                
-                                <button
-                                    onClick={saveRecord}
-                                    className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors"
-                                >
-                                    <Check /> {editingId ? 'Update' : 'Save'} Record
-                                </button>
                             </div>
-                        )}
-
-                        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                            {filteredRecords.length === 0 ? (
-                                <div className="p-12 text-center text-gray-500">
-                                    <p className="text-lg">No records found</p>
-                                    <p className="text-sm mt-2">Add your first record to get started</p>
-                                </div>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50 border-b border-gray-200">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-200">
-                                            {filteredRecords.map((record) => (
-                                                <tr key={record.id} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{record.name}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.email}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.phone}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.company}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{record.notes}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                        <button
-                                                            onClick={() => startEdit(record)}
-                                                            className="text-blue-600 hover:text-blue-900 mr-3 transition-colors"
-                                                        >
-                                                            <Edit2 />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => deleteRecord(record.id)}
-                                                            className="text-red-600 hover:text-red-900 transition-colors"
-                                                        >
-                                                            <Trash2 />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
                         </div>
+                    )}
 
-                        <div className="mt-4 text-center text-sm text-gray-600">
-                            Total Records: {records.length} {searchTerm && `(${filteredRecords.length} shown)`}
-                        </div>
+                    <div className="space-y-4">
+                        {templates.map(template => (
+                            <div key={template.id} className="bg-white rounded-lg shadow-lg p-6">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold">{template.name}</h3>
+                                        <div className="text-sm text-gray-600 mt-2 space-y-1">
+                                            <div>Booth Check: KO {formatOffset(template.boothCheckOffset)}</div>
+                                            <div>Crew In: KO {formatOffset(template.crewInOffset)}</div>
+                                            <div>Sync Test: KO {formatOffset(template.syncTestOffset)}</div>
+                                            <div>Going Live: KO {formatOffset(template.goingLiveOffset)}</div>
+                                            <div>Half-time: KO +{template.halfTimeOffset} min</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => startEdit(template)}
+                                            className="text-blue-600 hover:text-blue-800 p-2"
+                                        >
+                                            <Edit2 />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (confirm('Delete this template?')) {
+                                                    deleteTemplate(template.id);
+                                                }
+                                            }}
+                                            className="text-red-600 hover:text-red-800 p-2"
+                                        >
+                                            <Trash2 />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             );
         }
 
-        ReactDOM.render(<DatabaseManager />, document.getElementById('root'));
+        function ImportEvents({ templates, importEvents }) {
+            const [pasteData, setPasteData] = useState('');
+            const [preview, setPreview] = useState([]);
+
+            const handleParse = () => {
+                const parsed = parseImportData(pasteData);
+                setPreview(parsed);
+            };
+
+            const handleImport = async () => {
+                if (preview.length === 0) return;
+                await importEvents(preview);
+                setPasteData('');
+                setPreview([]);
+                alert(`Imported ${preview.length} events successfully!`);
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="bg-white rounded-lg shadow-lg p-6">
+                        <h2 className="text-xl font-bold mb-4">Import Events from Spreadsheet</h2>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">
+                                    Paste data from your spreadsheet (including headers):
+                                </label>
+                                <textarea
+                                    value={pasteData}
+                                    onChange={(e) => setPasteData(e.target.value)}
+                                    className="w-full h-48 px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                                    placeholder="Paste your spreadsheet data here (including header row)..."
+                                />
+                            </div>
+                            
+                            <button
+                                onClick={handleParse}
+                                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+                                disabled={!pasteData.trim()}
+                            >
+                                Parse Data
+                            </button>
+                        </div>
+                    </div>
+
+                    {preview.length > 0 && (
+                        <div className="bg-white rounded-lg shadow-lg p-6">
+                            <h3 className="text-lg font-bold mb-4">Preview ({preview.length} events found)</h3>
+                            
+                            <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
+                                {preview.map((event, idx) => (
+                                    <div key={idx} className={`border rounded-lg p-3 ${event.isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50'}`}>
+                                        <div className="font-medium">{event.gameName}</div>
+                                        <div className="text-sm text-gray-600 mt-1">
+                                            {event.date} | {event.startTime} - {event.endTime} | {event.channel}
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            {event.isActive ? (
+                                                <>NL: {event.crewNL} ({event.boothNL}, {event.fpNL}) | FR: {event.crewFR} ({event.boothFR}, {event.fpFR})</>
+                                            ) : (
+                                                <span className="text-orange-600">No crew assigned - display only</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleImport}
+                                    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
+                                >
+                                    Import {preview.length} Event(s)
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setPreview([]);
+                                        setPasteData('');
+                                    }}
+                                    className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
