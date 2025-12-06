@@ -11,18 +11,14 @@
 </head>
 <body>
     <div id="root"></div>
-
     <script type="text/babel">
         const { useState, useEffect } = React;
-
-        // Icons
         const Plus = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
         const Edit2 = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
         const Trash2 = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
         const Calendar = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
         const Clock = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 
-        // Storage polyfill
         if (typeof window.storage === 'undefined') {
             window.storage = {
                 async get(key) {
@@ -44,26 +40,10 @@
             };
         }
 
-        // Utility functions
         const parseTime = (timeStr) => {
             if (!timeStr || !timeStr.includes(':')) return 0;
             const [hours, minutes] = timeStr.split(':').map(Number);
             return hours * 60 + minutes;
-        };
-
-        const formatTime = (minutes) => {
-            const h = Math.floor(minutes / 60);
-            const m = minutes % 60;
-            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-        };
-
-        const parseOffset = (offsetStr) => {
-            const match = offsetStr.match(/([+-]?)(\d+):(\d+)/);
-            if (!match) return 0;
-            const sign = match[1] === '-' ? -1 : 1;
-            const hours = parseInt(match[2]);
-            const minutes = parseInt(match[3]);
-            return sign * (hours * 60 + minutes);
         };
 
         const formatOffset = (minutes) => {
@@ -74,18 +54,15 @@
             return `${sign}${h}:${String(m).padStart(2, '0')}`;
         };
 
-        // Parse CSV/paste data and group by GAME
         const parseImportData = (text) => {
             const lines = text.trim().split('\n');
             if (lines.length < 1) return [];
             
             const groupedData = {};
             
-            // Parse each line (no header row expected)
-            // Column structure: DAY | BROADCAST | CH | START | END | BOOTH | FP | CREW | LANG | FEE | S | A | GAME | INFO
             for (let i = 0; i < lines.length; i++) {
                 const parts = lines[i].split('\t');
-                if (parts.length < 13) continue; // Need at least 13 columns to reach GAME
+                if (parts.length < 13) continue;
                 
                 const day = parts[0];
                 const broadcast = parts[1];
@@ -96,15 +73,10 @@
                 const fp = parts[6];
                 const crew = parts[7];
                 const lang = parts[8];
-                const fee = parts[9];
-                // parts[10] = S column (skip)
-                // parts[11] = A column (skip)
                 const game = parts[12];
                 const info = parts[13] || '';
                 
-                // Clean up game name (remove extra whitespace)
                 const cleanGame = game ? game.trim().replace(/\s+/g, ' ') : '';
-                
                 if (!start || !cleanGame) continue;
                 
                 if (!groupedData[cleanGame]) {
@@ -116,20 +88,14 @@
                         endTime: end,
                         gameName: cleanGame,
                         info: info,
-                        template: detectTemplate(cleanGame),
+                        template: 'football',
                         crews: [],
                         remarks: ''
                     };
                 }
                 
-                // Only add crew if we have valid crew data
                 if (crew && crew.trim()) {
-                    groupedData[cleanGame].crews.push({
-                        booth: booth,
-                        fp: fp,
-                        crew: crew,
-                        lang: lang
-                    });
+                    groupedData[cleanGame].crews.push({ booth, fp, crew, lang });
                 }
             }
             
@@ -146,50 +112,9 @@
                     crewFR: frCrew?.crew || '',
                     fpFR: frCrew?.fp || '',
                     isActive: event.crews.length > 1,
-                    checks: {
-                        boothCheck: false,
-                        nlIn: false,
-                        nlSync: false,
-                        frIn: false,
-                        frSync: false,
-                        goingLive: false
-                    }
+                    checks: { boothCheck: false, nlIn: false, nlSync: false, frIn: false, frSync: false, goingLive: false }
                 };
             });
-        };
-            }
-            
-            return Object.values(groupedData).map(event => {
-                const nlCrew = event.crews.find(c => c.lang.includes('NL'));
-                const frCrew = event.crews.find(c => c.lang.includes('FR'));
-                
-                return {
-                    ...event,
-                    boothNL: nlCrew?.booth || '',
-                    crewNL: nlCrew?.crew || '',
-                    fpNL: nlCrew?.fp || '',
-                    boothFR: frCrew?.booth || '',
-                    crewFR: frCrew?.crew || '',
-                    fpFR: frCrew?.fp || '',
-                    isActive: event.crews.length > 1,
-                    checks: {
-                        boothCheck: false,
-                        nlIn: false,
-                        nlSync: false,
-                        frIn: false,
-                        frSync: false,
-                        goingLive: false
-                    }
-                };
-            });
-        };
-
-        const detectTemplate = (gameName) => {
-            const lower = gameName.toLowerCase().replace(/\s+/g, '');
-            if (lower.includes('ligue') || lower.includes('pokal') || lower.includes('bundesliga') || lower.includes('seriea') || lower.includes('laliga')) {
-                return 'football';
-            }
-            return 'football';
         };
 
         function App() {
@@ -209,55 +134,39 @@
             const loadTemplates = async () => {
                 try {
                     const result = await window.storage.list('template:');
-                    if (result && result.keys && result.keys.length > 0) {
-                        const loaded = await Promise.all(
-                            result.keys.map(async (key) => {
-                                try {
-                                    const item = await window.storage.get(key);
-                                    return item ? JSON.parse(item.value) : null;
-                                } catch {
-                                    return null;
-                                }
-                            })
-                        );
+                    if (result?.keys?.length > 0) {
+                        const loaded = await Promise.all(result.keys.map(async (key) => {
+                            try {
+                                const item = await window.storage.get(key);
+                                return item ? JSON.parse(item.value) : null;
+                            } catch { return null; }
+                        }));
                         setTemplates(loaded.filter(t => t !== null));
                     } else {
                         const defaultTemplate = {
-                            id: 'football',
-                            name: 'Football Match',
-                            boothCheckOffset: -90,
-                            crewInOffset: -75,
-                            syncTestOffset: -60,
-                            goingLiveOffset: -10,
-                            halfTimeOffset: 50
+                            id: 'football', name: 'Football Match',
+                            boothCheckOffset: -90, crewInOffset: -75,
+                            syncTestOffset: -60, goingLiveOffset: -10, halfTimeOffset: 50
                         };
                         await window.storage.set('template:football', JSON.stringify(defaultTemplate));
                         setTemplates([defaultTemplate]);
                     }
-                } catch (error) {
-                    console.log('Error loading templates');
-                }
+                } catch (error) { console.log('Error loading templates'); }
             };
 
             const loadEvents = async () => {
                 try {
                     const result = await window.storage.list('event:');
-                    if (result && result.keys) {
-                        const loaded = await Promise.all(
-                            result.keys.map(async (key) => {
-                                try {
-                                    const item = await window.storage.get(key);
-                                    return item ? JSON.parse(item.value) : null;
-                                } catch {
-                                    return null;
-                                }
-                            })
-                        );
+                    if (result?.keys) {
+                        const loaded = await Promise.all(result.keys.map(async (key) => {
+                            try {
+                                const item = await window.storage.get(key);
+                                return item ? JSON.parse(item.value) : null;
+                            } catch { return null; }
+                        }));
                         setEvents(loaded.filter(e => e !== null));
                     }
-                } catch (error) {
-                    console.log('No events found');
-                }
+                } catch (error) { console.log('No events found'); }
             };
 
             const saveTemplate = async (template) => {
@@ -292,68 +201,26 @@
                         <div className="max-w-full mx-auto flex justify-between items-center px-4">
                             <h1 className="text-2xl font-bold">LiveList Broadcast Manager</h1>
                             <div className="flex items-center gap-2 text-xl font-mono bg-blue-700 px-6 py-3 rounded-lg">
-                                <Clock />
-                                {currentTime.toLocaleTimeString()}
+                                <Clock /> {currentTime.toLocaleTimeString()}
                             </div>
                         </div>
                     </header>
-
                     <nav className="bg-white shadow-md">
                         <div className="max-w-full mx-auto px-4">
                             <div className="flex gap-4 py-3">
-                                <button
-                                    onClick={() => setView('dashboard')}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                                        view === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                    }`}
-                                >
-                                    Dashboard
-                                </button>
-                                <button
-                                    onClick={() => setView('templates')}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                                        view === 'templates' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                    }`}
-                                >
-                                    Templates
-                                </button>
-                                <button
-                                    onClick={() => setView('import')}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                                        view === 'import' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                    }`}
-                                >
-                                    Import Events
-                                </button>
+                                {['dashboard', 'templates', 'import'].map(v => (
+                                    <button key={v} onClick={() => setView(v)}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === v ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                                        {v.charAt(0).toUpperCase() + v.slice(1).replace('import', 'Import Events')}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </nav>
-
                     <main className="max-w-full p-6">
-                        {view === 'dashboard' && (
-                            <Dashboard 
-                                events={events}
-                                templates={templates}
-                                currentTime={currentTime}
-                                selectedDate={selectedDate}
-                                setSelectedDate={setSelectedDate}
-                                saveEvent={saveEvent}
-                                deleteEvent={deleteEvent}
-                            />
-                        )}
-                        {view === 'templates' && (
-                            <TemplateManager
-                                templates={templates}
-                                saveTemplate={saveTemplate}
-                                deleteTemplate={deleteTemplate}
-                            />
-                        )}
-                        {view === 'import' && (
-                            <ImportEvents
-                                templates={templates}
-                                importEvents={importEvents}
-                            />
-                        )}
+                        {view === 'dashboard' && <Dashboard events={events} templates={templates} currentTime={currentTime} selectedDate={selectedDate} setSelectedDate={setSelectedDate} saveEvent={saveEvent} deleteEvent={deleteEvent} />}
+                        {view === 'templates' && <TemplateManager templates={templates} saveTemplate={saveTemplate} deleteTemplate={deleteTemplate} />}
+                        {view === 'import' && <ImportEvents importEvents={importEvents} />}
                     </main>
                 </div>
             );
@@ -364,11 +231,8 @@
             const [remarksValue, setRemarksValue] = useState('');
 
             const getFilteredEvents = () => {
-                return events.filter(event => {
-                    const eventDate = event.date;
-                    const selectedDay = selectedDate.split('-')[2];
-                    return eventDate.includes(selectedDay);
-                }).sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
+                return events.filter(e => e.date.includes(selectedDate.split('-')[2]))
+                    .sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
             };
 
             const toggleCheck = async (event, checkType) => {
@@ -377,32 +241,21 @@
                 await saveEvent(updated);
             };
 
-            const getTemplate = (event) => {
-                return templates.find(t => t.id === event.template) || templates[0];
-            };
+            const getTemplate = (event) => templates.find(t => t.id === event.template) || templates[0];
 
             const shouldHighlight = (event, checkType) => {
-                if (!event.isActive) return false;
-                if (event.checks[checkType]) return false;
-                
+                if (!event.isActive || event.checks[checkType]) return false;
                 const template = getTemplate(event);
                 if (!template) return false;
-                
-                const startMinutes = parseTime(event.startTime);
-                const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
-                
+                const startMin = parseTime(event.startTime);
+                const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
                 let triggerTime;
-                switch(checkType) {
-                    case 'boothCheck': triggerTime = startMinutes + template.boothCheckOffset; break;
-                    case 'nlIn':
-                    case 'frIn': triggerTime = startMinutes + template.crewInOffset; break;
-                    case 'nlSync':
-                    case 'frSync': triggerTime = startMinutes + template.syncTestOffset; break;
-                    case 'goingLive': triggerTime = startMinutes + template.goingLiveOffset; break;
-                    default: return false;
-                }
-                
-                return currentMinutes >= triggerTime;
+                if (checkType === 'boothCheck') triggerTime = startMin + template.boothCheckOffset;
+                else if (checkType === 'nlIn' || checkType === 'frIn') triggerTime = startMin + template.crewInOffset;
+                else if (checkType === 'nlSync' || checkType === 'frSync') triggerTime = startMin + template.syncTestOffset;
+                else if (checkType === 'goingLive') triggerTime = startMin + template.goingLiveOffset;
+                else return false;
+                return currentMin >= triggerTime;
             };
 
             const getCheckboxClass = (event, checkType) => {
@@ -414,42 +267,22 @@
 
             const getEventStatusColor = (event) => {
                 if (!event.isActive) return '';
-                
-                const startMinutes = parseTime(event.startTime);
-                const endMinutes = parseTime(event.endTime);
-                const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+                const startMin = parseTime(event.startTime);
+                const endMin = parseTime(event.endTime);
+                const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
                 const template = getTemplate(event);
-                
-                if (currentMinutes < startMinutes + (template?.boothCheckOffset || -90)) {
-                    return 'bg-orange-200';
-                }
-                if (currentMinutes < startMinutes) {
-                    return 'bg-orange-300';
-                }
-                if (currentMinutes >= startMinutes && currentMinutes < startMinutes + 5) {
-                    return 'bg-green-500 text-white font-bold';
-                }
-                if (currentMinutes < startMinutes + 30) {
-                    return 'bg-green-200';
-                }
-                const halfTime = startMinutes + (template?.halfTimeOffset || 50);
-                if (currentMinutes >= halfTime && currentMinutes < halfTime + 30) {
-                    return 'bg-green-600 text-white font-bold';
-                }
-                if (currentMinutes < endMinutes) {
-                    return 'bg-green-700 text-white font-bold';
-                }
+                if (currentMin < startMin + (template?.boothCheckOffset || -90)) return 'bg-orange-200';
+                if (currentMin < startMin) return 'bg-orange-300';
+                if (currentMin >= startMin && currentMin < startMin + 5) return 'bg-green-500 text-white font-bold';
+                if (currentMin < startMin + 30) return 'bg-green-200';
+                const halfTime = startMin + (template?.halfTimeOffset || 50);
+                if (currentMin >= halfTime && currentMin < halfTime + 30) return 'bg-green-600 text-white font-bold';
+                if (currentMin < endMin) return 'bg-green-700 text-white font-bold';
                 return 'bg-gray-400 text-gray-300';
             };
 
-            const startEditRemarks = (event) => {
-                setEditingRemarks(event.id);
-                setRemarksValue(event.remarks || '');
-            };
-
             const saveRemarks = async (event) => {
-                const updated = { ...event, remarks: remarksValue };
-                await saveEvent(updated);
+                await saveEvent({ ...event, remarks: remarksValue });
                 setEditingRemarks(null);
             };
 
@@ -459,17 +292,9 @@
                 <div>
                     <div className="mb-6 flex items-center gap-4 bg-white p-4 rounded-lg shadow">
                         <Calendar />
-                        <input
-                            type="date"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg"
-                        />
-                        <span className="text-gray-600">
-                            Showing {filteredEvents.length} event(s)
-                        </span>
+                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg" />
+                        <span className="text-gray-600">Showing {filteredEvents.length} event(s)</span>
                     </div>
-
                     <div className="bg-white rounded-lg shadow-lg overflow-x-auto">
                         <table className="w-full text-sm border-collapse">
                             <thead className="bg-gray-100 sticky top-0">
@@ -492,138 +317,58 @@
                                     <th className="border border-gray-300 px-2 py-2 text-center">END</th>
                                     <th className="border border-gray-300 px-2 py-2 text-left">INFO</th>
                                     <th className="border border-gray-300 px-2 py-2 text-left min-w-[150px]">REMARKS</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center">DELETE</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-center">DEL</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredEvents.map(event => {
                                     const statusColor = getEventStatusColor(event);
                                     const isInactive = !event.isActive;
-                                    
                                     return (
                                         <tr key={event.id} className={isInactive ? 'bg-white text-gray-300' : ''}>
                                             <td className="border border-gray-300 px-2 py-2">{event.channel}</td>
                                             <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={event.checks.boothCheck}
-                                                        onChange={() => toggleCheck(event, 'boothCheck')}
-                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'boothCheck')}`}
-                                                    />
-                                                )}
+                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.boothCheck} onChange={() => toggleCheck(event, 'boothCheck')} className={`w-5 h-5 ${getCheckboxClass(event, 'boothCheck')}`} />}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">
-                                                {isInactive ? '--' : event.boothNL}
-                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">{isInactive ? '--' : event.boothNL}</td>
                                             <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={event.checks.nlIn}
-                                                        onChange={() => toggleCheck(event, 'nlIn')}
-                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'nlIn')}`}
-                                                    />
-                                                )}
+                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.nlIn} onChange={() => toggleCheck(event, 'nlIn')} className={`w-5 h-5 ${getCheckboxClass(event, 'nlIn')}`} />}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-blue-600">
-                                                {isInactive ? '--' : event.crewNL}
-                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-blue-600">{isInactive ? '--' : event.crewNL}</td>
                                             <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={event.checks.nlSync}
-                                                        onChange={() => toggleCheck(event, 'nlSync')}
-                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'nlSync')}`}
-                                                    />
-                                                )}
+                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.nlSync} onChange={() => toggleCheck(event, 'nlSync')} className={`w-5 h-5 ${getCheckboxClass(event, 'nlSync')}`} />}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">
-                                                {isInactive ? '--' : event.fpNL}
-                                            </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">
-                                                {isInactive ? '--' : event.boothFR}
-                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">{isInactive ? '--' : event.fpNL}</td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">{isInactive ? '--' : event.boothFR}</td>
                                             <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={event.checks.frIn}
-                                                        onChange={() => toggleCheck(event, 'frIn')}
-                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'frIn')}`}
-                                                    />
-                                                )}
+                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.frIn} onChange={() => toggleCheck(event, 'frIn')} className={`w-5 h-5 ${getCheckboxClass(event, 'frIn')}`} />}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-red-600">
-                                                {isInactive ? '--' : event.crewFR}
-                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-red-600">{isInactive ? '--' : event.crewFR}</td>
                                             <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={event.checks.frSync}
-                                                        onChange={() => toggleCheck(event, 'frSync')}
-                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'frSync')}`}
-                                                    />
-                                                )}
+                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.frSync} onChange={() => toggleCheck(event, 'frSync')} className={`w-5 h-5 ${getCheckboxClass(event, 'frSync')}`} />}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">
-                                                {isInactive ? '--' : event.fpFR}
-                                            </td>
+                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">{isInactive ? '--' : event.fpFR}</td>
                                             <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={event.checks.goingLive}
-                                                        onChange={() => toggleCheck(event, 'goingLive')}
-                                                        className={`w-5 h-5 ${getCheckboxClass(event, 'goingLive')}`}
-                                                    />
-                                                )}
+                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.goingLive} onChange={() => toggleCheck(event, 'goingLive')} className={`w-5 h-5 ${getCheckboxClass(event, 'goingLive')}`} />}
                                             </td>
-                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>
-                                                {event.startTime}
-                                            </td>
-                                            <td className={`border border-gray-300 px-2 py-2 ${statusColor}`}>
-                                                {event.gameName}
-                                            </td>
-                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>
-                                                {event.endTime}
-                                            </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-xs">
-                                                {event.info}
-                                            </td>
+                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>{event.startTime}</td>
+                                            <td className={`border border-gray-300 px-2 py-2 ${statusColor}`}>{event.gameName}</td>
+                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>{event.endTime}</td>
+                                            <td className="border border-gray-300 px-2 py-2 text-xs">{event.info}</td>
                                             <td className="border border-gray-300 px-2 py-2">
                                                 {editingRemarks === event.id ? (
-                                                    <input
-                                                        type="text"
-                                                        value={remarksValue}
-                                                        onChange={(e) => setRemarksValue(e.target.value)}
-                                                        onBlur={() => saveRemarks(event)}
-                                                        onKeyDown={(e) => e.key === 'Enter' && saveRemarks(event)}
-                                                        autoFocus
-                                                        className="w-full px-2 py-1 border border-blue-500 rounded"
-                                                    />
+                                                    <input type="text" value={remarksValue} onChange={(e) => setRemarksValue(e.target.value)}
+                                                        onBlur={() => saveRemarks(event)} onKeyDown={(e) => e.key === 'Enter' && saveRemarks(event)}
+                                                        autoFocus className="w-full px-2 py-1 border border-blue-500 rounded" />
                                                 ) : (
-                                                    <div
-                                                        onClick={() => !isInactive && startEditRemarks(event)}
-                                                        className={`cursor-pointer hover:bg-gray-50 px-2 py-1 rounded min-h-[24px]`}
-                                                    >
-                                                        {event.remarks || (isInactive ? '--' : 'Click to edit...')}
+                                                    <div onClick={() => !isInactive && (setEditingRemarks(event.id), setRemarksValue(event.remarks || ''))}
+                                                        className="cursor-pointer hover:bg-gray-50 px-2 py-1 rounded min-h-[24px]">
+                                                        {event.remarks || (isInactive ? '--' : 'Click...')}
                                                     </div>
                                                 )}
                                             </td>
                                             <td className="border border-gray-300 px-2 py-2 text-center">
-                                                <button
-                                                    onClick={() => {
-                                                        if (confirm('Delete this event?')) {
-                                                            deleteEvent(event.id);
-                                                        }
-                                                    }}
-                                                    className="text-red-600 hover:text-red-800"
-                                                >
-                                                    <Trash2 />
-                                                </button>
+                                                <button onClick={() => confirm('Delete?') && deleteEvent(event.id)} className="text-red-600 hover:text-red-800"><Trash2 /></button>
                                             </td>
                                         </tr>
                                     );
@@ -631,10 +376,9 @@
                             </tbody>
                         </table>
                     </div>
-
                     {filteredEvents.length === 0 && (
                         <div className="text-center py-12 bg-white rounded-lg shadow-lg mt-6">
-                            <p className="text-lg text-gray-500">No events scheduled for this date</p>
+                            <p className="text-lg text-gray-500">No events for this date</p>
                             <p className="text-sm text-gray-400 mt-2">Import events to get started</p>
                         </div>
                     )}
@@ -644,34 +388,15 @@
 
         function TemplateManager({ templates, saveTemplate, deleteTemplate }) {
             const [editing, setEditing] = useState(null);
-            const [formData, setFormData] = useState({
-                id: '',
-                name: '',
-                boothCheckOffset: -90,
-                crewInOffset: -75,
-                syncTestOffset: -60,
-                goingLiveOffset: -10,
-                halfTimeOffset: 50
-            });
+            const [formData, setFormData] = useState({ id: '', name: '', boothCheckOffset: -90, crewInOffset: -75, syncTestOffset: -60, goingLiveOffset: -10, halfTimeOffset: 50 });
 
             const startEdit = (template) => {
-                setFormData(template ? { ...template } : {
-                    id: Date.now().toString(),
-                    name: '',
-                    boothCheckOffset: -90,
-                    crewInOffset: -75,
-                    syncTestOffset: -60,
-                    goingLiveOffset: -10,
-                    halfTimeOffset: 50
-                });
+                setFormData(template || { id: Date.now().toString(), name: '', boothCheckOffset: -90, crewInOffset: -75, syncTestOffset: -60, goingLiveOffset: -10, halfTimeOffset: 50 });
                 setEditing(true);
             };
 
             const handleSave = async () => {
-                if (!formData.name) {
-                    alert('Template name is required');
-                    return;
-                }
+                if (!formData.name) { alert('Name required'); return; }
                 await saveTemplate(formData);
                 setEditing(false);
             };
@@ -679,129 +404,52 @@
             return (
                 <div>
                     <div className="mb-6">
-                        <button
-                            onClick={() => startEdit(null)}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                        >
+                        <button onClick={() => startEdit(null)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
                             <Plus /> Create Template
                         </button>
                     </div>
-
                     {editing && (
                         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                            <h2 className="text-xl font-bold mb-4">
-                                {formData.id && templates.find(t => t.id === formData.id) ? 'Edit Template' : 'Create Template'}
-                            </h2>
-                            
+                            <h2 className="text-xl font-bold mb-4">{templates.find(t => t.id === formData.id) ? 'Edit' : 'Create'} Template</h2>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Template Name</label>
-                                    <input
-                                        type="text"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                        placeholder="e.g., Football Match"
-                                    />
+                                    <label className="block text-sm font-medium mb-1">Name</label>
+                                    <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
                                 </div>
-
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Booth Check (minutes before KO)</label>
-                                        <input
-                                            type="number"
-                                            value={Math.abs(formData.boothCheckOffset)}
-                                            onChange={(e) => setFormData({ ...formData, boothCheckOffset: -Math.abs(parseInt(e.target.value) || 0) })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Crew In (minutes before KO)</label>
-                                        <input
-                                            type="number"
-                                            value={Math.abs(formData.crewInOffset)}
-                                            onChange={(e) => setFormData({ ...formData, crewInOffset: -Math.abs(parseInt(e.target.value) || 0) })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Sync Test (minutes before KO)</label>
-                                        <input
-                                            type="number"
-                                            value={Math.abs(formData.syncTestOffset)}
-                                            onChange={(e) => setFormData({ ...formData, syncTestOffset: -Math.abs(parseInt(e.target.value) || 0) })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Going Live (minutes before KO)</label>
-                                        <input
-                                            type="number"
-                                            value={Math.abs(formData.goingLiveOffset)}
-                                            onChange={(e) => setFormData({ ...formData, goingLiveOffset: -Math.abs(parseInt(e.target.value) || 0) })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Half-time (minutes after KO)</label>
-                                        <input
-                                            type="number"
-                                            value={formData.halfTimeOffset}
-                                            onChange={(e) => setFormData({ ...formData, halfTimeOffset: parseInt(e.target.value) || 50 })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                        />
-                                    </div>
+                                    {['boothCheckOffset', 'crewInOffset', 'syncTestOffset', 'goingLiveOffset', 'halfTimeOffset'].map(field => (
+                                        <div key={field}>
+                                            <label className="block text-sm font-medium mb-1">{field.replace('Offset', '').replace(/([A-Z])/g, ' $1').trim()} (min)</label>
+                                            <input type="number" value={field === 'halfTimeOffset' ? formData[field] : Math.abs(formData[field])}
+                                                onChange={(e) => setFormData({...formData, [field]: field === 'halfTimeOffset' ? parseInt(e.target.value)||50 : -Math.abs(parseInt(e.target.value)||0)})}
+                                                className="w-full px-4 py-2 border rounded-lg" />
+                                        </div>
+                                    ))}
                                 </div>
-
-                                <div className="flex gap-2 pt-4">
-                                    <button
-                                        onClick={handleSave}
-                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-                                    >
-                                        Save Template
-                                    </button>
-                                    <button
-                                        onClick={() => setEditing(false)}
-                                        className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400"
-                                    >
-                                        Cancel
-                                    </button>
+                                <div className="flex gap-2">
+                                    <button onClick={handleSave} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">Save</button>
+                                    <button onClick={() => setEditing(false)} className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400">Cancel</button>
                                 </div>
                             </div>
                         </div>
                     )}
-
                     <div className="space-y-4">
-                        {templates.map(template => (
-                            <div key={template.id} className="bg-white rounded-lg shadow-lg p-6">
-                                <div className="flex justify-between items-start mb-4">
+                        {templates.map(t => (
+                            <div key={t.id} className="bg-white rounded-lg shadow-lg p-6">
+                                <div className="flex justify-between items-start">
                                     <div>
-                                        <h3 className="text-lg font-bold">{template.name}</h3>
+                                        <h3 className="text-lg font-bold">{t.name}</h3>
                                         <div className="text-sm text-gray-600 mt-2 space-y-1">
-                                            <div>Booth Check: KO {formatOffset(template.boothCheckOffset)}</div>
-                                            <div>Crew In: KO {formatOffset(template.crewInOffset)}</div>
-                                            <div>Sync Test: KO {formatOffset(template.syncTestOffset)}</div>
-                                            <div>Going Live: KO {formatOffset(template.goingLiveOffset)}</div>
-                                            <div>Half-time: KO +{template.halfTimeOffset} min</div>
+                                            <div>Booth Check: KO {formatOffset(t.boothCheckOffset)}</div>
+                                            <div>Crew In: KO {formatOffset(t.crewInOffset)}</div>
+                                            <div>Sync Test: KO {formatOffset(t.syncTestOffset)}</div>
+                                            <div>Going Live: KO {formatOffset(t.goingLiveOffset)}</div>
+                                            <div>Half-time: KO +{t.halfTimeOffset} min</div>
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button
-                                            onClick={() => startEdit(template)}
-                                            className="text-blue-600 hover:text-blue-800 p-2"
-                                        >
-                                            <Edit2 />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (confirm('Delete this template?')) {
-                                                    deleteTemplate(template.id);
-                                                }
-                                            }}
-                                            className="text-red-600 hover:text-red-800 p-2"
-                                        >
-                                            <Trash2 />
-                                        </button>
+                                        <button onClick={() => startEdit(t)} className="text-blue-600 hover:text-blue-800 p-2"><Edit2 /></button>
+                                        <button onClick={() => confirm('Delete?') && deleteTemplate(t.id)} className="text-red-600 hover:text-red-800 p-2"><Trash2 /></button>
                                     </div>
                                 </div>
                             </div>
@@ -811,62 +459,43 @@
             );
         }
 
-        function ImportEvents({ templates, importEvents }) {
+        function ImportEvents({ importEvents }) {
             const [pasteData, setPasteData] = useState('');
             const [preview, setPreview] = useState([]);
-
-            const handleParse = () => {
-                const parsed = parseImportData(pasteData);
-                setPreview(parsed);
-            };
 
             const handleImport = async () => {
                 if (preview.length === 0) return;
                 await importEvents(preview);
                 setPasteData('');
                 setPreview([]);
-                alert(`Imported ${preview.length} events successfully!`);
+                alert(`Imported ${preview.length} events!`);
             };
 
             return (
                 <div className="space-y-6">
                     <div className="bg-white rounded-lg shadow-lg p-6">
                         <h2 className="text-xl font-bold mb-4">Import Events from Spreadsheet</h2>
-                        
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">
-                                    Paste data from your spreadsheet (including headers):
-                                </label>
-                                <textarea
-                                    value={pasteData}
-                                    onChange={(e) => setPasteData(e.target.value)}
+                                <label className="block text-sm font-medium mb-2">Paste data from spreadsheet (no headers):</label>
+                                <textarea value={pasteData} onChange={(e) => setPasteData(e.target.value)}
                                     className="w-full h-48 px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                                    placeholder="Paste your spreadsheet data here (including header row)..."
-                                />
+                                    placeholder="Paste your spreadsheet data here..." />
                             </div>
-                            
-                            <button
-                                onClick={handleParse}
-                                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-                                disabled={!pasteData.trim()}
-                            >
+                            <button onClick={() => setPreview(parseImportData(pasteData))} disabled={!pasteData.trim()}
+                                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
                                 Parse Data
                             </button>
                         </div>
                     </div>
-
                     {preview.length > 0 && (
                         <div className="bg-white rounded-lg shadow-lg p-6">
                             <h3 className="text-lg font-bold mb-4">Preview ({preview.length} events found)</h3>
-                            
                             <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
                                 {preview.map((event, idx) => (
                                     <div key={idx} className={`border rounded-lg p-3 ${event.isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50'}`}>
                                         <div className="font-medium">{event.gameName}</div>
-                                        <div className="text-sm text-gray-600 mt-1">
-                                            {event.date} | {event.startTime} - {event.endTime} | {event.channel}
-                                        </div>
+                                        <div className="text-sm text-gray-600 mt-1">{event.date} | {event.startTime} - {event.endTime} | {event.channel}</div>
                                         <div className="text-xs text-gray-500 mt-1">
                                             {event.isActive ? (
                                                 <>NL: {event.crewNL} ({event.boothNL}, {event.fpNL}) | FR: {event.crewFR} ({event.boothFR}, {event.fpFR})</>
@@ -877,21 +506,12 @@
                                     </div>
                                 ))}
                             </div>
-                            
                             <div className="flex gap-2">
-                                <button
-                                    onClick={handleImport}
-                                    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
-                                >
+                                <button onClick={handleImport} className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700">
                                     Import {preview.length} Event(s)
                                 </button>
-                                <button
-                                    onClick={() => {
-                                        setPreview([]);
-                                        setPasteData('');
-                                    }}
-                                    className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400"
-                                >
+                                <button onClick={() => { setPreview([]); setPasteData(''); }}
+                                    className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400">
                                     Cancel
                                 </button>
                             </div>
