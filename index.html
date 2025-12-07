@@ -231,8 +231,13 @@
             const [remarksValue, setRemarksValue] = useState('');
 
             const getFilteredEvents = () => {
-                return events.filter(e => e.date.includes(selectedDate.split('-')[2]))
-                    .sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
+                const selectedDay = parseInt(selectedDate.split('-')[2]);
+                return events.filter(e => {
+                    // Extract day number from date string (e.g., "zo 7-dec" -> 7)
+                    const dayMatch = e.date.match(/(\d+)-/);
+                    const eventDay = dayMatch ? parseInt(dayMatch[1]) : 0;
+                    return eventDay === selectedDay;
+                }).sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
             };
 
             const toggleCheck = async (event, checkType) => {
