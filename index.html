@@ -17,102 +17,70 @@
         const Edit2 = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
         const Trash2 = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
         const Calendar = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
-        const Clock = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 
         if (typeof window.storage === 'undefined') {
             window.storage = {
-                async get(key) {
-                    const value = localStorage.getItem(key);
-                    return value ? { key, value, shared: false } : null;
-                },
-                async set(key, value) {
-                    localStorage.setItem(key, value);
-                    return { key, value, shared: false };
-                },
-                async delete(key) {
-                    localStorage.removeItem(key);
-                    return { key, deleted: true, shared: false };
-                },
-                async list(prefix) {
-                    const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
-                    return { keys, prefix, shared: false };
-                }
+                async get(key) { const v = localStorage.getItem(key); return v ? {key, value: v, shared: false} : null; },
+                async set(key, value) { localStorage.setItem(key, value); return {key, value, shared: false}; },
+                async delete(key) { localStorage.removeItem(key); return {key, deleted: true, shared: false}; },
+                async list(prefix) { const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix)); return {keys, prefix, shared: false}; }
             };
         }
 
         const parseTime = (timeStr) => {
             if (!timeStr || !timeStr.includes(':')) return 0;
-            const [hours, minutes] = timeStr.split(':').map(Number);
-            return hours * 60 + minutes;
+            const [h, m] = timeStr.split(':').map(Number);
+            return h * 60 + m;
         };
 
-        const formatOffset = (minutes) => {
-            const sign = minutes < 0 ? '-' : '+';
-            const abs = Math.abs(minutes);
+        const formatOffset = (min) => {
+            const sign = min < 0 ? '-' : '+';
+            const abs = Math.abs(min);
             const h = Math.floor(abs / 60);
             const m = abs % 60;
             return `${sign}${h}:${String(m).padStart(2, '0')}`;
         };
 
+        const formatCheckboxTime = (startTime, offsetMin) => {
+            const startMin = parseTime(startTime);
+            const actionMin = startMin + offsetMin;
+            const h = Math.floor(actionMin / 60) % 24;
+            const m = actionMin % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        };
+
         const parseImportData = (text) => {
             const lines = text.trim().split('\n');
             if (lines.length < 1) return [];
-            
             const groupedData = {};
             
             for (let i = 0; i < lines.length; i++) {
                 const parts = lines[i].split('\t');
                 if (parts.length < 13) continue;
-                
-                const day = parts[0];
-                const broadcast = parts[1];
-                const ch = parts[2];
-                const start = parts[3];
-                const end = parts[4];
-                const booth = parts[5];
-                const fp = parts[6];
-                const crew = parts[7];
-                const lang = parts[8];
-                const game = parts[12];
-                const info = parts[13] || '';
-                
+                const [day, broadcast, ch, start, end, booth, fp, crew, lang, , , , game, info] = parts;
                 const cleanGame = game ? game.trim().replace(/\s+/g, ' ') : '';
                 if (!start || !cleanGame) continue;
                 
                 if (!groupedData[cleanGame]) {
                     groupedData[cleanGame] = {
-                        id: Date.now() + Math.random(),
-                        date: day,
-                        channel: `${broadcast} ${ch}`.trim(),
-                        startTime: start,
-                        endTime: end,
-                        gameName: cleanGame,
-                        info: info,
-                        template: 'football',
-                        crews: [],
-                        remarks: ''
+                        id: Date.now() + Math.random(), date: day, channel: ch.trim(),
+                        startTime: start, endTime: end, gameName: cleanGame, info: info || '',
+                        template: 'football', crews: [], remarks: ''
                     };
                 }
-                
-                if (crew && crew.trim()) {
-                    groupedData[cleanGame].crews.push({ booth, fp, crew, lang });
-                }
+                // Remove spaces from FP (flypack) data
+                const cleanFp = fp ? fp.replace(/\s+/g, '') : '';
+                if (crew && crew.trim()) groupedData[cleanGame].crews.push({booth, fp: cleanFp, crew, lang});
             }
             
             return Object.values(groupedData).map(event => {
                 const nlCrew = event.crews.find(c => c.lang && c.lang.includes('NL'));
                 const frCrew = event.crews.find(c => c.lang && c.lang.includes('FR'));
-                
                 return {
-                    ...event,
-                    boothNL: nlCrew?.booth || '',
-                    crewNL: nlCrew?.crew || '',
-                    fpNL: nlCrew?.fp || '',
-                    boothFR: frCrew?.booth || '',
-                    crewFR: frCrew?.crew || '',
-                    fpFR: frCrew?.fp || '',
+                    ...event, boothNL: nlCrew?.booth || '', crewNL: nlCrew?.crew || '', fpNL: nlCrew?.fp || '',
+                    boothFR: frCrew?.booth || '', crewFR: frCrew?.crew || '', fpFR: frCrew?.fp || '',
                     isActive: event.crews.length > 1,
-                    checks: { boothCheck: false, nlIn: false, nlSync: false, frIn: false, frSync: false, goingLive: false }
+                    checks: {boothCheck: false, nlIn: false, nlSync: false, frIn: false, frSync: false, goingLive: false}
                 };
             });
         };
@@ -120,38 +88,50 @@
         function App() {
             const [view, setView] = useState('dashboard');
             const [currentTime, setCurrentTime] = useState(new Date());
-            const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+            const [selectedDate, setSelectedDate] = useState('');
             const [templates, setTemplates] = useState([]);
             const [events, setEvents] = useState([]);
 
             useEffect(() => {
-                loadTemplates();
-                loadEvents();
+                loadTemplates(); loadEvents();
                 const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-                return () => clearInterval(timer);
+                const switchHandler = () => setView('dashboard');
+                window.addEventListener('switchToDashboard', switchHandler);
+                return () => {
+                    clearInterval(timer);
+                    window.removeEventListener('switchToDashboard', switchHandler);
+                };
             }, []);
+
+            useEffect(() => {
+                if (events.length > 0 && !selectedDate) {
+                    const sorted = [...events].sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
+                    if (sorted[0]) {
+                        const match = sorted[0].date.match(/(\d+)-(\w+)/);
+                        if (match) {
+                            const monthMap = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+                            const monthNum = monthMap[match[2].toLowerCase()] || '01';
+                            setSelectedDate(`2025-${monthNum}-${match[1].padStart(2,'0')}`);
+                        }
+                    }
+                }
+            }, [events, selectedDate]);
 
             const loadTemplates = async () => {
                 try {
                     const result = await window.storage.list('template:');
                     if (result?.keys?.length > 0) {
                         const loaded = await Promise.all(result.keys.map(async (key) => {
-                            try {
-                                const item = await window.storage.get(key);
-                                return item ? JSON.parse(item.value) : null;
-                            } catch { return null; }
+                            try { const item = await window.storage.get(key); return item ? JSON.parse(item.value) : null; }
+                            catch { return null; }
                         }));
                         setTemplates(loaded.filter(t => t !== null));
                     } else {
-                        const defaultTemplate = {
-                            id: 'football', name: 'Football Match',
-                            boothCheckOffset: -90, crewInOffset: -75,
-                            syncTestOffset: -60, goingLiveOffset: -10, halfTimeOffset: 50
-                        };
-                        await window.storage.set('template:football', JSON.stringify(defaultTemplate));
-                        setTemplates([defaultTemplate]);
+                        const def = {id:'football',name:'Football Match',boothCheckOffset:-90,crewInOffset:-75,syncTestOffset:-60,goingLiveOffset:-10,halfTimeOffset:50};
+                        await window.storage.set('template:football', JSON.stringify(def));
+                        setTemplates([def]);
                     }
-                } catch (error) { console.log('Error loading templates'); }
+                } catch (e) { console.log('Error loading templates'); }
             };
 
             const loadEvents = async () => {
@@ -159,64 +139,45 @@
                     const result = await window.storage.list('event:');
                     if (result?.keys) {
                         const loaded = await Promise.all(result.keys.map(async (key) => {
-                            try {
-                                const item = await window.storage.get(key);
-                                return item ? JSON.parse(item.value) : null;
-                            } catch { return null; }
+                            try { const item = await window.storage.get(key); return item ? JSON.parse(item.value) : null; }
+                            catch { return null; }
                         }));
                         setEvents(loaded.filter(e => e !== null));
                     }
-                } catch (error) { console.log('No events found'); }
+                } catch (e) { console.log('No events'); }
             };
 
-            const saveTemplate = async (template) => {
-                await window.storage.set(`template:${template.id}`, JSON.stringify(template));
-                await loadTemplates();
-            };
-
-            const deleteTemplate = async (id) => {
-                await window.storage.delete(`template:${id}`);
-                await loadTemplates();
-            };
-
-            const saveEvent = async (event) => {
-                await window.storage.set(`event:${event.id}`, JSON.stringify(event));
-                await loadEvents();
-            };
-
-            const deleteEvent = async (id) => {
-                await window.storage.delete(`event:${id}`);
-                await loadEvents();
-            };
-
-            const importEvents = async (importedEvents) => {
-                for (const event of importedEvents) {
-                    await saveEvent(event);
-                }
-            };
+            const saveTemplate = async (t) => { await window.storage.set(`template:${t.id}`, JSON.stringify(t)); await loadTemplates(); };
+            const deleteTemplate = async (id) => { await window.storage.delete(`template:${id}`); await loadTemplates(); };
+            const saveEvent = async (e) => { await window.storage.set(`event:${e.id}`, JSON.stringify(e)); await loadEvents(); };
+            const deleteEvent = async (id) => { await window.storage.delete(`event:${id}`); await loadEvents(); };
+            const importEvents = async (evts) => { for (const e of evts) await saveEvent(e); };
 
             return (
                 <div className="min-h-screen bg-gray-100">
-                    <header className="bg-blue-600 text-white p-4 shadow-lg">
-                        <div className="max-w-full mx-auto flex justify-between items-center px-4">
-                            <h1 className="text-2xl font-bold">LiveList Broadcast Manager</h1>
-                            <div className="flex items-center gap-2 text-xl font-mono bg-blue-700 px-6 py-3 rounded-lg">
-                                <Clock /> {currentTime.toLocaleTimeString()}
+                    <header className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 text-white shadow-lg">
+                        <div className="max-w-full mx-auto px-4 py-3">
+                            <div className="flex justify-between items-center">
+                                <button onClick={() => setView('dashboard')}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === 'dashboard' ? 'bg-white text-blue-700' : 'bg-blue-500 hover:bg-blue-400'}`}>
+                                    Dashboard
+                                </button>
+                                <div className="text-3xl font-mono bg-black text-white px-4 py-2 rounded-lg font-bold">
+                                    {currentTime.toLocaleTimeString()}
+                                </div>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setView('templates')}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === 'templates' ? 'bg-white text-blue-700' : 'bg-blue-500 hover:bg-blue-400'}`}>
+                                        Templates
+                                    </button>
+                                    <button onClick={() => setView('import')}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === 'import' ? 'bg-white text-blue-700' : 'bg-blue-500 hover:bg-blue-400'}`}>
+                                        Import
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </header>
-                    <nav className="bg-white shadow-md">
-                        <div className="max-w-full mx-auto px-4">
-                            <div className="flex gap-4 py-3">
-                                {['dashboard', 'templates', 'import'].map(v => (
-                                    <button key={v} onClick={() => setView(v)}
-                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${view === v ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                                        {v.charAt(0).toUpperCase() + v.slice(1).replace('import', 'Import Events')}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </nav>
                     <main className="max-w-full p-6">
                         {view === 'dashboard' && <Dashboard events={events} templates={templates} currentTime={currentTime} selectedDate={selectedDate} setSelectedDate={setSelectedDate} saveEvent={saveEvent} deleteEvent={deleteEvent} />}
                         {view === 'templates' && <TemplateManager templates={templates} saveTemplate={saveTemplate} deleteTemplate={deleteTemplate} />}
@@ -226,22 +187,27 @@
             );
         }
 
-        function Dashboard({ events, templates, currentTime, selectedDate, setSelectedDate, saveEvent, deleteEvent }) {
+        function Dashboard({events, templates, currentTime, selectedDate, setSelectedDate, saveEvent, deleteEvent}) {
             const [editingRemarks, setEditingRemarks] = useState(null);
             const [remarksValue, setRemarksValue] = useState('');
 
             const getFilteredEvents = () => {
                 const selectedDay = parseInt(selectedDate.split('-')[2]);
                 return events.filter(e => {
-                    // Extract day number from date string (e.g., "zo 7-dec" -> 7)
                     const dayMatch = e.date.match(/(\d+)-/);
                     const eventDay = dayMatch ? parseInt(dayMatch[1]) : 0;
                     return eventDay === selectedDay;
-                }).sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
+                }).sort((a, b) => {
+                    const aTime = parseTime(a.startTime);
+                    const bTime = parseTime(b.startTime);
+                    const aAdj = aTime < 420 ? aTime + 1440 : aTime;
+                    const bAdj = bTime < 420 ? bTime + 1440 : bTime;
+                    return aAdj - bAdj;
+                });
             };
 
             const toggleCheck = async (event, checkType) => {
-                const updated = { ...event };
+                const updated = {...event};
                 updated.checks[checkType] = !updated.checks[checkType];
                 await saveEvent(updated);
             };
@@ -253,42 +219,69 @@
                 const template = getTemplate(event);
                 if (!template) return false;
                 const startMin = parseTime(event.startTime);
-                const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+                let currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+                const adjStart = startMin < 420 ? startMin + 1440 : startMin;
+                const adjCurrent = currentMin < 420 ? currentMin + 1440 : currentMin;
                 let triggerTime;
-                if (checkType === 'boothCheck') triggerTime = startMin + template.boothCheckOffset;
-                else if (checkType === 'nlIn' || checkType === 'frIn') triggerTime = startMin + template.crewInOffset;
-                else if (checkType === 'nlSync' || checkType === 'frSync') triggerTime = startMin + template.syncTestOffset;
-                else if (checkType === 'goingLive') triggerTime = startMin + template.goingLiveOffset;
+                if (checkType === 'boothCheck') triggerTime = adjStart + template.boothCheckOffset;
+                else if (checkType === 'nlIn' || checkType === 'frIn') triggerTime = adjStart + template.crewInOffset;
+                else if (checkType === 'nlSync' || checkType === 'frSync') triggerTime = adjStart + template.syncTestOffset;
+                else if (checkType === 'goingLive') triggerTime = adjStart + template.goingLiveOffset;
                 else return false;
-                return currentMin >= triggerTime;
+                return adjCurrent >= triggerTime;
             };
 
             const getCheckboxClass = (event, checkType) => {
-                if (!event.isActive) return 'cursor-not-allowed opacity-30';
-                if (event.checks[checkType]) return 'bg-green-400';
-                if (shouldHighlight(event, checkType)) return 'bg-yellow-300';
-                return 'bg-white';
+                // Check if event has ended (post end time)
+                const endMin = parseTime(event.endTime);
+                let currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+                const adjEnd = endMin < 420 ? endMin + 1440 : endMin;
+                const adjCurrent = currentMin < 420 ? currentMin + 1440 : currentMin;
+                if (adjCurrent >= adjEnd) return 'bg-gray-300 text-gray-500 cursor-not-allowed w-full h-full flex items-center justify-center';
+                
+                if (!event.isActive) return 'bg-gray-300 text-gray-500 cursor-not-allowed w-full h-full flex items-center justify-center';
+                
+                if (event.checks[checkType]) return 'bg-white text-green-700 w-full h-full flex items-center justify-center font-bold';
+                if (shouldHighlight(event, checkType)) return 'bg-yellow-300 text-black w-full h-full flex items-center justify-center font-bold';
+                return 'bg-white text-black hover:bg-gray-50 w-full h-full flex items-center justify-center cursor-pointer';
             };
 
             const getEventStatusColor = (event) => {
                 if (!event.isActive) return '';
                 const startMin = parseTime(event.startTime);
                 const endMin = parseTime(event.endTime);
-                const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+                let currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+                const adjStart = startMin < 420 ? startMin + 1440 : startMin;
+                const adjEnd = endMin < 420 ? endMin + 1440 : endMin;
+                const adjCurrent = currentMin < 420 ? currentMin + 1440 : currentMin;
                 const template = getTemplate(event);
-                if (currentMin < startMin + (template?.boothCheckOffset || -90)) return 'bg-orange-200';
-                if (currentMin < startMin) return 'bg-orange-300';
-                if (currentMin >= startMin && currentMin < startMin + 5) return 'bg-green-500 text-white font-bold';
-                if (currentMin < startMin + 30) return 'bg-green-200';
-                const halfTime = startMin + (template?.halfTimeOffset || 50);
-                if (currentMin >= halfTime && currentMin < halfTime + 30) return 'bg-green-600 text-white font-bold';
-                if (currentMin < endMin) return 'bg-green-700 text-white font-bold';
+                if (adjCurrent < adjStart + (template?.boothCheckOffset || -90)) return 'bg-orange-200';
+                if (adjCurrent < adjStart) return 'bg-orange-300';
+                if (adjCurrent >= adjStart && adjCurrent < adjStart + 5) return 'bg-green-500 text-white font-bold';
+                if (adjCurrent < adjStart + 30) return 'bg-green-200';
+                const halfTime = adjStart + (template?.halfTimeOffset || 50);
+                if (adjCurrent >= halfTime && adjCurrent < halfTime + 30) return 'bg-green-600 text-white font-bold';
+                if (adjCurrent < adjEnd) return 'bg-green-700 text-white font-bold';
                 return 'bg-gray-400 text-gray-300';
             };
 
             const saveRemarks = async (event) => {
-                await saveEvent({ ...event, remarks: remarksValue });
+                await saveEvent({...event, remarks: remarksValue});
                 setEditingRemarks(null);
+            };
+
+            const deleteDay = async () => {
+                if (!selectedDate) return;
+                const selectedDay = parseInt(selectedDate.split('-')[2]);
+                const toDelete = events.filter(e => {
+                    const dayMatch = e.date.match(/(\d+)-/);
+                    const eventDay = dayMatch ? parseInt(dayMatch[1]) : 0;
+                    return eventDay === selectedDay;
+                });
+                if (toDelete.length === 0) { alert('No events to delete'); return; }
+                if (confirm(`Delete all ${toDelete.length} event(s) for this day? This cannot be undone.`)) {
+                    for (const event of toDelete) await deleteEvent(event.id);
+                }
             };
 
             const filteredEvents = getFilteredEvents();
@@ -297,70 +290,106 @@
                 <div>
                     <div className="mb-6 flex items-center gap-4 bg-white p-4 rounded-lg shadow">
                         <Calendar />
-                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg" />
+                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-4 py-2 border rounded-lg" />
                         <span className="text-gray-600">Showing {filteredEvents.length} event(s)</span>
+                        <button onClick={deleteDay} className="ml-auto bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center gap-2">
+                            <Trash2 /> Erase Day
+                        </button>
                     </div>
                     <div className="bg-white rounded-lg shadow-lg overflow-x-auto">
                         <table className="w-full text-sm border-collapse">
                             <thead className="bg-gray-100 sticky top-0">
                                 <tr>
-                                    <th className="border border-gray-300 px-2 py-2 text-left">CHANNEL</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center">BOOTH</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">BTH NL</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">IN</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-left text-blue-600">CREW NL</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">SYNC</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-blue-600">FP NL</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">BTH FR</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">IN</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-left text-red-600">CREW FR</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">SYNC</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center text-red-600">FP FR</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center">GOING LIVE</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center">START</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-left min-w-[300px]">GAME</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center">END</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-left">INFO</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-left min-w-[150px]">REMARKS</th>
-                                    <th className="border border-gray-300 px-2 py-2 text-center">DEL</th>
+                                    <th className="border border-gray-300 px-2 py-2">CHANNEL</th>
+                                    <th className="border border-gray-300 px-2 py-2">BOOTH</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-blue-600">BTH NL</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-blue-600">IN</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-blue-600">CREW NL</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-blue-600">SYNC</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-blue-600">FP NL</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-red-600">BTH FR</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-red-600">IN</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-red-600">CREW FR</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-red-600">SYNC</th>
+                                    <th className="border border-gray-300 px-2 py-2 text-red-600">FP FR</th>
+                                    <th className="border border-gray-300 px-2 py-2">LIVE</th>
+                                    <th className="border border-gray-300 px-2 py-2">START</th>
+                                    <th className="border border-gray-300 px-2 py-2 min-w-[300px]">GAME</th>
+                                    <th className="border border-gray-300 px-2 py-2">END</th>
+                                    <th className="border border-gray-300 px-2 py-2">INFO</th>
+                                    <th className="border border-gray-300 px-2 py-2 min-w-[150px]">REMARKS</th>
+                                    <th className="border border-gray-300 px-2 py-2">DEL</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredEvents.map(event => {
                                     const statusColor = getEventStatusColor(event);
                                     const isInactive = !event.isActive;
+                                    const template = getTemplate(event);
                                     return (
                                         <tr key={event.id} className={isInactive ? 'bg-white text-gray-300' : ''}>
-                                            <td className="border border-gray-300 px-2 py-2">{event.channel}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.boothCheck} onChange={() => toggleCheck(event, 'boothCheck')} className={`w-5 h-5 ${getCheckboxClass(event, 'boothCheck')}`} />}
+                                            <td className="border px-2 py-2">{event.channel}</td>
+                                            <td className="border px-0 py-0 text-center h-full">
+                                                {isInactive ? <div className="px-2 py-2 h-full flex items-center justify-center">--</div> : (
+                                                    <button onClick={() => toggleCheck(event,'boothCheck')}
+                                                        className={`px-2 py-2 font-mono text-sm ${getCheckboxClass(event,'boothCheck')}`}>
+                                                        {formatCheckboxTime(event.startTime, template?.boothCheckOffset || -90)}
+                                                    </button>
+                                                )}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">{isInactive ? '--' : event.boothNL}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.nlIn} onChange={() => toggleCheck(event, 'nlIn')} className={`w-5 h-5 ${getCheckboxClass(event, 'nlIn')}`} />}
+                                            <td className="border px-2 py-2 text-center text-blue-600">{isInactive ? '--' : event.boothNL}</td>
+                                            <td className="border px-0 py-0 text-center h-full">
+                                                {isInactive ? <div className="px-2 py-2 h-full flex items-center justify-center">--</div> : (
+                                                    <button onClick={() => toggleCheck(event,'nlIn')}
+                                                        className={`px-2 py-2 font-mono text-sm ${getCheckboxClass(event,'nlIn')}`}>
+                                                        {formatCheckboxTime(event.startTime, template?.crewInOffset || -75)}
+                                                    </button>
+                                                )}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-blue-600">{isInactive ? '--' : event.crewNL}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.nlSync} onChange={() => toggleCheck(event, 'nlSync')} className={`w-5 h-5 ${getCheckboxClass(event, 'nlSync')}`} />}
+                                            <td className="border px-2 py-2 text-blue-600">{isInactive ? '--' : event.crewNL}</td>
+                                            <td className="border px-0 py-0 text-center h-full">
+                                                {isInactive ? <div className="px-2 py-2 h-full flex items-center justify-center">--</div> : (
+                                                    <button onClick={() => toggleCheck(event,'nlSync')}
+                                                        className={`px-2 py-2 font-mono text-sm ${getCheckboxClass(event,'nlSync')}`}>
+                                                        {formatCheckboxTime(event.startTime, template?.syncTestOffset || -60)}
+                                                    </button>
+                                                )}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-blue-600">{isInactive ? '--' : event.fpNL}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">{isInactive ? '--' : event.boothFR}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.frIn} onChange={() => toggleCheck(event, 'frIn')} className={`w-5 h-5 ${getCheckboxClass(event, 'frIn')}`} />}
+                                            <td className="border px-2 py-2 text-center text-blue-600">{isInactive ? '--' : event.fpNL}</td>
+                                            <td className="border px-2 py-2 text-center text-red-600">{isInactive ? '--' : event.boothFR}</td>
+                                            <td className="border px-0 py-0 text-center h-full">
+                                                {isInactive ? <div className="px-2 py-2 h-full flex items-center justify-center">--</div> : (
+                                                    <button onClick={() => toggleCheck(event,'frIn')}
+                                                        className={`px-2 py-2 font-mono text-sm ${getCheckboxClass(event,'frIn')}`}>
+                                                        {formatCheckboxTime(event.startTime, template?.crewInOffset || -75)}
+                                                    </button>
+                                                )}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-red-600">{isInactive ? '--' : event.crewFR}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.frSync} onChange={() => toggleCheck(event, 'frSync')} className={`w-5 h-5 ${getCheckboxClass(event, 'frSync')}`} />}
+                                            <td className="border px-2 py-2 text-red-600">{isInactive ? '--' : event.crewFR}</td>
+                                            <td className="border px-0 py-0 text-center h-full">
+                                                {isInactive ? <div className="px-2 py-2 h-full flex items-center justify-center">--</div> : (
+                                                    <button onClick={() => toggleCheck(event,'frSync')}
+                                                        className={`px-2 py-2 font-mono text-sm ${getCheckboxClass(event,'frSync')}`}>
+                                                        {formatCheckboxTime(event.startTime, template?.syncTestOffset || -60)}
+                                                    </button>
+                                                )}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center text-red-600">{isInactive ? '--' : event.fpFR}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center">
-                                                {isInactive ? '--' : <input type="checkbox" checked={event.checks.goingLive} onChange={() => toggleCheck(event, 'goingLive')} className={`w-5 h-5 ${getCheckboxClass(event, 'goingLive')}`} />}
+                                            <td className="border px-2 py-2 text-center text-red-600">{isInactive ? '--' : event.fpFR}</td>
+                                            <td className="border px-0 py-0 text-center h-full">
+                                                {isInactive ? <div className="px-2 py-2 h-full flex items-center justify-center">--</div> : (
+                                                    <button onClick={() => toggleCheck(event,'goingLive')}
+                                                        className={`px-2 py-2 font-mono text-sm ${getCheckboxClass(event,'goingLive')}`}>
+                                                        {formatCheckboxTime(event.startTime, template?.goingLiveOffset || -10)}
+                                                    </button>
+                                                )}
                                             </td>
-                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>{event.startTime}</td>
-                                            <td className={`border border-gray-300 px-2 py-2 ${statusColor}`}>{event.gameName}</td>
-                                            <td className={`border border-gray-300 px-2 py-2 text-center font-mono ${statusColor}`}>{event.endTime}</td>
-                                            <td className="border border-gray-300 px-2 py-2 text-xs">{event.info}</td>
-                                            <td className="border border-gray-300 px-2 py-2">
+                                            <td className={`border px-2 py-2 text-center font-mono ${statusColor}`}>{event.startTime}</td>
+                                            <td className={`border px-2 py-2 ${statusColor}`}>{event.gameName}</td>
+                                            <td className={`border px-2 py-2 text-center font-mono ${statusColor}`}>{event.endTime}</td>
+                                            <td className={`border px-2 py-2 text-xs ${event.info && event.info.trim() ? 'bg-orange-400 font-bold' : ''}`}>
+                                                {event.info}
+                                            </td>
+                                            <td className="border px-2 py-2">
                                                 {editingRemarks === event.id ? (
                                                     <input type="text" value={remarksValue} onChange={(e) => setRemarksValue(e.target.value)}
                                                         onBlur={() => saveRemarks(event)} onKeyDown={(e) => e.key === 'Enter' && saveRemarks(event)}
@@ -372,7 +401,7 @@
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="border border-gray-300 px-2 py-2 text-center">
+                                            <td className="border px-2 py-2 text-center">
                                                 <button onClick={() => confirm('Delete?') && deleteEvent(event.id)} className="text-red-600 hover:text-red-800"><Trash2 /></button>
                                             </td>
                                         </tr>
@@ -384,19 +413,18 @@
                     {filteredEvents.length === 0 && (
                         <div className="text-center py-12 bg-white rounded-lg shadow-lg mt-6">
                             <p className="text-lg text-gray-500">No events for this date</p>
-                            <p className="text-sm text-gray-400 mt-2">Import events to get started</p>
                         </div>
                     )}
                 </div>
             );
         }
 
-        function TemplateManager({ templates, saveTemplate, deleteTemplate }) {
+        function TemplateManager({templates, saveTemplate, deleteTemplate}) {
             const [editing, setEditing] = useState(null);
-            const [formData, setFormData] = useState({ id: '', name: '', boothCheckOffset: -90, crewInOffset: -75, syncTestOffset: -60, goingLiveOffset: -10, halfTimeOffset: 50 });
+            const [formData, setFormData] = useState({id:'',name:'',boothCheckOffset:-90,crewInOffset:-75,syncTestOffset:-60,goingLiveOffset:-10,halfTimeOffset:50});
 
-            const startEdit = (template) => {
-                setFormData(template || { id: Date.now().toString(), name: '', boothCheckOffset: -90, crewInOffset: -75, syncTestOffset: -60, goingLiveOffset: -10, halfTimeOffset: 50 });
+            const startEdit = (t) => {
+                setFormData(t || {id:Date.now().toString(),name:'',boothCheckOffset:-90,crewInOffset:-75,syncTestOffset:-60,goingLiveOffset:-10,halfTimeOffset:50});
                 setEditing(true);
             };
 
@@ -417,18 +445,14 @@
                         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                             <h2 className="text-xl font-bold mb-4">{templates.find(t => t.id === formData.id) ? 'Edit' : 'Create'} Template</h2>
                             <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Name</label>
-                                    <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-                                </div>
+                                <div><label className="block text-sm font-medium mb-1">Name</label>
+                                    <input type="text" value={formData.name} onChange={(e) => setFormData({...formData,name:e.target.value})} className="w-full px-4 py-2 border rounded-lg" /></div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    {['boothCheckOffset', 'crewInOffset', 'syncTestOffset', 'goingLiveOffset', 'halfTimeOffset'].map(field => (
-                                        <div key={field}>
-                                            <label className="block text-sm font-medium mb-1">{field.replace('Offset', '').replace(/([A-Z])/g, ' $1').trim()} (min)</label>
-                                            <input type="number" value={field === 'halfTimeOffset' ? formData[field] : Math.abs(formData[field])}
-                                                onChange={(e) => setFormData({...formData, [field]: field === 'halfTimeOffset' ? parseInt(e.target.value)||50 : -Math.abs(parseInt(e.target.value)||0)})}
-                                                className="w-full px-4 py-2 border rounded-lg" />
-                                        </div>
+                                    {['boothCheckOffset','crewInOffset','syncTestOffset','goingLiveOffset','halfTimeOffset'].map(f => (
+                                        <div key={f}><label className="block text-sm font-medium mb-1">{f.replace('Offset','').replace(/([A-Z])/g,' $1').trim()} (min)</label>
+                                            <input type="number" value={f === 'halfTimeOffset' ? formData[f] : Math.abs(formData[f])}
+                                                onChange={(e) => setFormData({...formData,[f]: f === 'halfTimeOffset' ? parseInt(e.target.value)||50 : -Math.abs(parseInt(e.target.value)||0)})}
+                                                className="w-full px-4 py-2 border rounded-lg" /></div>
                                     ))}
                                 </div>
                                 <div className="flex gap-2">
@@ -464,16 +488,16 @@
             );
         }
 
-        function ImportEvents({ importEvents }) {
+        function ImportEvents({importEvents}) {
             const [pasteData, setPasteData] = useState('');
             const [preview, setPreview] = useState([]);
 
             const handleImport = async () => {
                 if (preview.length === 0) return;
                 await importEvents(preview);
-                setPasteData('');
-                setPreview([]);
-                alert(`Imported ${preview.length} events!`);
+                setPasteData(''); setPreview([]);
+                // Switch to dashboard after import
+                window.dispatchEvent(new CustomEvent('switchToDashboard'));
             };
 
             return (
@@ -482,21 +506,33 @@
                         <h2 className="text-xl font-bold mb-4">Import Events from Spreadsheet</h2>
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">Paste data from spreadsheet (no headers):</label>
+                                <label className="block text-sm font-medium mb-2">Paste data (no headers):</label>
                                 <textarea value={pasteData} onChange={(e) => setPasteData(e.target.value)}
-                                    className="w-full h-48 px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                                    className="w-full h-48 px-4 py-2 border rounded-lg font-mono text-sm"
                                     placeholder="Paste your spreadsheet data here..." />
                             </div>
-                            <button onClick={() => setPreview(parseImportData(pasteData))} disabled={!pasteData.trim()}
-                                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
-                                Parse Data
-                            </button>
+                            <div className="flex gap-2">
+                                {preview.length === 0 ? (
+                                    <button onClick={() => setPreview(parseImportData(pasteData))} disabled={!pasteData.trim()}
+                                        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
+                                        Parse Data
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button onClick={handleImport} className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700">
+                                            Import {preview.length} Event(s)
+                                        </button>
+                                        <button onClick={() => {setPreview([]);setPasteData('');}}
+                                            className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400">Cancel</button>
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </div>
                     {preview.length > 0 && (
                         <div className="bg-white rounded-lg shadow-lg p-6">
-                            <h3 className="text-lg font-bold mb-4">Preview ({preview.length} events found)</h3>
-                            <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
+                            <h3 className="text-lg font-bold mb-4">Preview ({preview.length} events)</h3>
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
                                 {preview.map((event, idx) => (
                                     <div key={idx} className={`border rounded-lg p-3 ${event.isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50'}`}>
                                         <div className="font-medium">{event.gameName}</div>
@@ -505,20 +541,11 @@
                                             {event.isActive ? (
                                                 <>NL: {event.crewNL} ({event.boothNL}, {event.fpNL}) | FR: {event.crewFR} ({event.boothFR}, {event.fpFR})</>
                                             ) : (
-                                                <span className="text-orange-600">No crew assigned - display only</span>
+                                                <span className="text-orange-600">No crew - display only</span>
                                             )}
                                         </div>
                                     </div>
                                 ))}
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={handleImport} className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700">
-                                    Import {preview.length} Event(s)
-                                </button>
-                                <button onClick={() => { setPreview([]); setPasteData(''); }}
-                                    className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400">
-                                    Cancel
-                                </button>
                             </div>
                         </div>
                     )}
